@@ -1,0 +1,46 @@
+{
+  "manifest_version": 3,
+  "name": "ModResponse - HTTP 响应伪造 & Mock 工具",
+  "short_name": "ModResponse",
+  "version": "1.0.0",
+  "description": "强大灵活的 Chrome HTTP (Fetch & XHR) 响应伪造与拦截 Mock 插件。支持 JSON/文本修改、状态码篡改、响应头添加与延迟模拟。",
+  "permissions": [
+    "storage",
+    "scripting"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_start",
+      "all_frames": true
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["injected.js"],
+      "matches": ["<all_urls>"]
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "ModResponse 控制台",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "options_page": "options.html",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

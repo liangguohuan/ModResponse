@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ModResponse 控制台 (全屏模式)</title>
+  <link rel="stylesheet" href="popup.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    body {
+      width: 100vw;
+      height: 100vh;
+      max-height: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background-color: #0b0f19;
+    }
+    .app-container {
+      width: 800px;
+      height: 90vh;
+      max-height: 900px;
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+      background: var(--bg-primary);
+      overflow: hidden;
+    }
+    #btn-open-options {
+      display: none !important; /* Hide open options button in options page */
+    }
+  </style>
+</head>
+<body>
+  <!-- 直接复用 popup.html 的内部 DOM 结构 -->
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="brand">
+        <div class="logo-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="16 18 22 12 16 6"></polyline>
+            <polyline points="8 6 2 12 8 18"></polyline>
+          </svg>
+        </div>
+        <div class="title-group">
+          <h1>ModResponse 控制台</h1>
+          <span class="status-badge" id="status-indicator">
+            <span class="dot"></span> <span id="status-text">已启用</span>
+          </span>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <label class="switch-toggle" title="全局开关">
+          <input type="checkbox" id="global-toggle" checked>
+          <span class="slider"></span>
+        </label>
+        <button id="btn-open-options" class="icon-btn" title="打开全屏独立工作台">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path></svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Navigation Tabs -->
+    <nav class="nav-tabs">
+      <button class="tab-btn active" data-tab="rules-tab">规则管理 (<span id="rule-count">0</span>)</button>
+      <button class="tab-btn" data-tab="logs-tab">拦截日志 (<span id="log-count">0</span>)</button>
+      <button class="tab-btn" data-tab="tools-tab">配置工具</button>
+    </nav>
+
+    <main class="tab-content">
+      <!-- TAB 1 -->
+      <section id="rules-tab" class="tab-pane active">
+        <div class="toolbar">
+          <div class="search-box">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            <input type="text" id="rule-search" placeholder="搜索规则名称或 URL Pattern...">
+          </div>
+          <button id="btn-add-rule" class="btn btn-primary">新建规则</button>
+        </div>
+        <div id="rules-list" class="rules-list"></div>
+        <div id="rules-empty" class="empty-state hidden">
+          <p>暂无 Mock 规则</p>
+          <button class="btn btn-secondary btn-sm" id="btn-create-first">立即新建一条规则</button>
+        </div>
+      </section>
+
+      <!-- TAB 2 -->
+      <section id="logs-tab" class="tab-pane">
+        <div class="toolbar">
+          <span class="sub-title">最近实时拦截记录</span>
+          <button id="btn-clear-logs" class="btn btn-danger btn-sm">清空日志</button>
+        </div>
+        <div id="logs-container" class="logs-container"></div>
+        <div id="logs-empty" class="empty-state hidden">
+          <p>尚未拦截到符合条件的 HTTP 请求</p>
+        </div>
+      </section>
+
+      <!-- TAB 3 -->
+      <section id="tools-tab" class="tab-pane">
+        <div class="tools-card">
+          <h3>规则备份与导出</h3>
+          <div class="btn-group">
+            <button id="btn-export-rules" class="btn btn-secondary">导出规则文件 (JSON)</button>
+            <button id="btn-import-trigger" class="btn btn-secondary">导入规则文件</button>
+            <input type="file" id="import-file-input" accept=".json" class="hidden">
+          </div>
+        </div>
+        <div class="tools-card">
+          <h3>快速预设模板加载</h3>
+          <div class="preset-buttons">
+            <button class="btn btn-sm btn-outline preset-btn" data-preset="json-success">+ 200 JSON 成功响应</button>
+            <button class="btn btn-sm btn-outline preset-btn" data-preset="error-404">+ 404 Not Found 模板</button>
+            <button class="btn btn-sm btn-outline preset-btn" data-preset="error-500">+ 500 Server Error 模板</button>
+            <button class="btn btn-sm btn-outline preset-btn" data-preset="slow-delay">+ 2秒 延迟慢接口</button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- RULE EDITOR MODAL -->
+    <div id="rule-modal" class="modal-overlay hidden">
+      <div class="modal-content" style="max-height: 80vh;">
+        <div class="modal-header">
+          <h2 id="modal-title">新建 Mock 规则</h2>
+          <button id="modal-close" class="icon-btn">&times;</button>
+        </div>
+        <div class="modal-body">
+          <form id="rule-form">
+            <input type="hidden" id="edit-rule-id">
+            <div class="form-row">
+              <div class="form-group flex-2">
+                <label>规则名称</label>
+                <input type="text" id="rule-name" required>
+              </div>
+              <div class="form-group flex-1">
+                <label>HTTP 方法</label>
+                <select id="rule-method">
+                  <option value="ALL">ALL (全部)</option>
+                  <option value="GET">GET</option><option value="POST">POST</option>
+                  <option value="PUT">PUT</option><option value="DELETE">DELETE</option>
+                  <option value="PATCH">PATCH</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group flex-1">
+                <label>匹配方式</label>
+                <select id="rule-match-type">
+                  <option value="contains">包含 (Contains)</option>
+                  <option value="exact">精准匹配 (Exact)</option>
+                  <option value="wildcard">通配符 (Wildcard *)</option>
+                  <option value="regex">正则表达式 (Regex)</option>
+                </select>
+              </div>
+              <div class="form-group flex-2">
+                <label>URL 匹配表达式</label>
+                <input type="text" id="rule-pattern" required>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group flex-1">
+                <label>状态码 Status Code</label>
+                <input type="number" id="rule-status" value="200" required>
+              </div>
+              <div class="form-group flex-1">
+                <label>响应延迟 (ms)</label>
+                <input type="number" id="rule-delay" value="0">
+              </div>
+              <div class="form-group flex-1">
+                <label>数据类型</label>
+                <select id="rule-type">
+                  <option value="json">JSON</option><option value="text">Text</option>
+                  <option value="html">HTML</option><option value="xml">XML</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group">
+              <div class="label-with-action">
+                <label>自定义 Response Headers</label>
+                <button type="button" id="btn-add-header" class="text-link-btn">+ 添加 Header</button>
+              </div>
+              <div id="headers-container" class="headers-container"></div>
+            </div>
+            <div class="form-group">
+              <div class="label-with-action">
+                <label>伪造响应内容 Response Body</label>
+                <div class="body-actions">
+                  <button type="button" id="btn-format-json" class="text-link-btn">格式化 JSON</button>
+                  <button type="button" id="btn-minify-json" class="text-link-btn">压缩 JSON</button>
+                </div>
+              </div>
+              <textarea id="rule-body" rows="12"></textarea>
+              <div id="json-error" class="error-msg hidden">JSON 语法错误，请检查格式！</div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" id="btn-cancel-rule" class="btn btn-secondary">取消</button>
+              <button type="submit" id="btn-save-rule" class="btn btn-primary">保存规则</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>
