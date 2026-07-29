@@ -1,10 +1,17 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
   <defs>
-    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#6366f1;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#8b5cf6;stop-opacity:1" />
+    <linearGradient id="blue-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#00E5FF;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#2979FF;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#651FFF;stop-opacity:1" />
     </linearGradient>
+    <filter id="drop-shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#000000" flood-opacity="0.3" />
+    </filter>
   </defs>
-  <rect x="8" y="8" width="112" height="112" rx="28" ry="28" fill="url(#grad)" />
-  <text x="64" y="90" font-family="Arial, sans-serif" font-size="76" font-weight="bold" fill="#ffffff" text-anchor="middle">R</text>
+  <!-- Clean, flat rounded square icon base -->
+  <rect x="0" y="0" width="128" height="128" rx="28" fill="url(#blue-grad)" />
+  
+  <!-- Stylized white letter R in the center, scaled up by 15% and perfectly centered -->
+  <path d="M37.5 29h26c15 0 26 10 26 24 0 11-7 20-18 23l19 23H74.5L57.5 76H49.5v23H37.5V29zm12 12v22h14c6 0 11-4 11-11s-5-11-11-11H49.5z" fill="#ffffff" filter="url(#drop-shadow)" transform="translate(64 64) scale(1.15) translate(-64 -64)" />
 </svg>

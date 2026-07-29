@@ -366,11 +366,42 @@
         return new rawEventSource(url, eventSourceInitDict);
       }
       
-      const es = Object.create(rawEventSource.prototype);
-      es.url = _url;
-      es.readyState = rawEventSource.CONNECTING;
-      es.withCredentials = eventSourceInitDict?.withCredentials || false;
-      
+      // 使用纯 plain object，避免继承原生 EventSource prototype 上的 native getter/setter
+      // 所有原生属性（url, readyState, withCredentials, close 等）均用 defineProperty 定义，
+      // 防止触发 native 层导致 Illegal invocation
+      const es = {};
+
+      // 静态常量
+      es.CONNECTING = 0;
+      es.OPEN = 1;
+      es.CLOSED = 2;
+
+      // url（只读）
+      Object.defineProperty(es, 'url', {
+        value: _url, writable: false, configurable: true, enumerable: true
+      });
+
+      // readyState（可读写，绕过 native getter/setter）
+      let _readyState = 0; // CONNECTING
+      Object.defineProperty(es, 'readyState', {
+        get() { return _readyState; },
+        set(v) { _readyState = v; },
+        configurable: true, enumerable: true
+      });
+
+      // withCredentials（可读写）
+      let _withCredentials = eventSourceInitDict?.withCredentials || false;
+      Object.defineProperty(es, 'withCredentials', {
+        get() { return _withCredentials; },
+        set(v) { _withCredentials = v; },
+        configurable: true, enumerable: true
+      });
+
+      // 事件处理器属性
+      es.onopen = null;
+      es.onmessage = null;
+      es.onerror = null;
+
       let listeners = {};
       es.addEventListener = function(type, listener) {
         if (!listeners[type]) listeners[type] = [];
@@ -390,15 +421,15 @@
         }
       };
       es.close = function() {
-        es.readyState = rawEventSource.CLOSED;
+        es.readyState = es.CLOSED;
       };
       
       const delay = parseInt(matchedRule.delay, 10) || 50;
       
       setTimeout(() => {
-        if (es.readyState === rawEventSource.CLOSED) return;
+        if (es.readyState === es.CLOSED) return;
         
-        es.readyState = rawEventSource.OPEN;
+        es.readyState = es.OPEN;
         es.dispatchEvent(new Event('open'));
         
         let mockData = matchedRule.responseBody || '';
