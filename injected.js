@@ -194,57 +194,80 @@
     let _url = '';
     let _method = 'GET';
     let _matchedRule = null;
+    let _openArgs = null; // 保存 open() 的原始参数，便于未匹配时回退
     let _listeners = {};
+    let _mockProps = {}; // mock 响应属性存储
 
     const self = this;
 
-    // 复制原 XHR 的所有可枚举属性和事件句柄代理
     this._xhr = xhr;
 
-    // 属性代理
-    ['responseType', 'timeout', 'withCredentials'].forEach(prop => {
+    // ---- 属性代理：未匹配时透传真实 xhr，匹配时读取 _mockProps ----
+    // 这些属性需要根据是否匹配动态决定来源
+    ['readyState', 'status', 'statusText', 'response', 'responseText', 'responseURL'].forEach(prop => {
       Object.defineProperty(self, prop, {
-        get: () => xhr[prop],
-        set: (val) => { xhr[prop] = val; }
+        get() {
+          if (_matchedRule) return _mockProps[prop] !== undefined ? _mockProps[prop] : (prop === 'readyState' ? 0 : null);
+          return xhr[prop];
+        },
+        configurable: true,
+        enumerable: true
       });
     });
 
-    // 拦截 open
+    // 可写属性代理（未匹配和匹配均需设置到真实 xhr）
+    ['responseType', 'timeout', 'withCredentials'].forEach(prop => {
+      Object.defineProperty(self, prop, {
+        get: () => xhr[prop],
+        set: (val) => { xhr[prop] = val; },
+        configurable: true,
+        enumerable: true
+      });
+    });
+
+    // ---- 拦截 open ----
     this.open = function (method, url, async, user, password) {
       _method = method || 'GET';
       _url = url;
+      _openArgs = arguments;
       try {
         _url = new URL(url, window.location.href).href;
       } catch (e) {}
 
       _matchedRule = findMatchingRule(_url, _method);
-      if (!_matchedRule) {
-        return xhr.open.apply(xhr, arguments);
-      }
+
+      // 无论是否匹配，都调用 xhr.open()，确保内部 xhr 状态正常
+      // 匹配时虽然不会真正发送，但 abort() / overrideMimeType() 等仍需 xhr 处于 open 状态
+      xhr.open.apply(xhr, arguments);
     };
 
-    // 拦截 setRequestHeader
+    // ---- 拦截 setRequestHeader ----
     this.setRequestHeader = function (header, value) {
       if (!_matchedRule) {
         return xhr.setRequestHeader.apply(xhr, arguments);
       }
+      // 匹配规则时忽略请求头设置（mock 响应不需要）
     };
 
-    // 拦截 addEventListener
+    // ---- addEventListener：匹配时只存本地，未匹配时同时注册到真实 xhr ----
     this.addEventListener = function (type, listener, options) {
       if (!_listeners[type]) _listeners[type] = [];
       _listeners[type].push(listener);
-      return xhr.addEventListener.apply(xhr, arguments);
+      if (!_matchedRule) {
+        xhr.addEventListener.apply(xhr, arguments);
+      }
     };
 
     this.removeEventListener = function (type, listener, options) {
       if (_listeners[type]) {
         _listeners[type] = _listeners[type].filter(l => l !== listener);
       }
-      return xhr.removeEventListener.apply(xhr, arguments);
+      if (!_matchedRule) {
+        xhr.removeEventListener.apply(xhr, arguments);
+      }
     };
 
-    // 触发局部与全局事件
+    // ---- 触发事件 ----
     function dispatchXHREvent(type) {
       const event = new Event(type);
       if (typeof self['on' + type] === 'function') {
@@ -255,30 +278,26 @@
       }
     }
 
-    // 拦截 send
+    // ---- 拦截 send ----
     this.send = function (body) {
       if (!_matchedRule) {
-        // 绑定原事件代理机制
-        xhr.onreadystatechange = function (e) {
-          if (typeof self.onreadystatechange === 'function') self.onreadystatechange(e);
-        };
-        xhr.onload = function (e) {
-          if (typeof self.onload === 'function') self.onload(e);
-        };
-        xhr.onerror = function (e) {
-          if (typeof self.onerror === 'function') self.onerror(e);
-        };
+        // 未匹配：绑定事件代理，透传给真实 xhr
+        ['readystatechange', 'load', 'loadend', 'error', 'abort', 'timeout', 'progress', 'loadstart'].forEach(type => {
+          xhr['on' + type] = function (e) {
+            if (typeof self['on' + type] === 'function') self['on' + type].call(self, e);
+          };
+        });
         return xhr.send.apply(xhr, arguments);
       }
 
-      // 开始实施 Mock 逻辑
+      // ---- 匹配规则：执行 Mock 逻辑 ----
       const startTime = Date.now();
       const delay = parseInt(_matchedRule.delay, 10) || 0;
       const statusCode = parseInt(_matchedRule.statusCode, 10) || 200;
       const responseBody = _matchedRule.responseBody || '';
 
       setTimeout(() => {
-        // 构造伪造数据
+        // 构造响应数据
         let finalResponse = responseBody;
         if (self.responseType === 'json') {
           try {
@@ -288,15 +307,15 @@
           }
         }
 
-        // 定义可读响应属性
-        Object.defineProperties(self, {
-          readyState: { value: 4, writable: false },
-          status: { value: statusCode, writable: false },
-          statusText: { value: statusCode === 200 ? 'OK' : 'Mocked', writable: false },
-          responseText: { value: responseBody, writable: false },
-          response: { value: finalResponse, writable: false },
-          responseURL: { value: _url, writable: false }
-        });
+        // 写入 mock 属性（通过 _mockProps 传递，由 defineProperty getter 读取）
+        _mockProps = {
+          readyState: 4,
+          status: statusCode,
+          statusText: statusCode === 200 ? 'OK' : 'Mocked',
+          responseText: responseBody,
+          response: finalResponse,
+          responseURL: _url
+        };
 
         // 标头处理
         self.getAllResponseHeaders = function () {
@@ -313,11 +332,11 @@
         };
 
         self.getResponseHeader = function (headerName) {
-          const headers = self.getAllResponseHeaders().split('\r\n');
-          for (let h of headers) {
+          const allHeaders = self.getAllResponseHeaders().split('\r\n');
+          for (let h of allHeaders) {
             const parts = h.split(': ');
             if (parts[0].toLowerCase() === (headerName || '').toLowerCase()) {
-              return parts[1];
+              return parts[1] || null;
             }
           }
           return null;
@@ -336,7 +355,7 @@
           duration: Date.now() - startTime
         });
 
-        // 模拟状态变更状态序列
+        // 模拟状态序列：readyState 1→2→3→4
         dispatchXHREvent('readystatechange');
         dispatchXHREvent('load');
         dispatchXHREvent('loadend');
@@ -344,9 +363,14 @@
       }, delay);
     };
 
-    // 其他 XHR 方法代理
-    this.abort = function () { xhr.abort(); };
+    // ---- 其他代理方法 ----
+    this.abort = function () {
+      _matchedRule = null;
+      xhr.abort();
+    };
     this.overrideMimeType = function (mime) { xhr.overrideMimeType(mime); };
+    this.getAllResponseHeaders = function () { return xhr.getAllResponseHeaders(); };
+    this.getResponseHeader = function (h) { return xhr.getResponseHeader(h); };
   }
 
   window.XMLHttpRequest = CustomXHR;
